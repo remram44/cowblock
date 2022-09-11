@@ -1,0 +1,11 @@
+target
+.project
+.idea
+.*.swp
+\#*#
+.DS_Store
+desktop.ini
+*.tar
+*.tar.gz
+*.tar.bz2
+*.zip

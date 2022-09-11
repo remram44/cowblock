@@ -1,0 +1,7 @@
+[package]
+name = "fuse-cow-block"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fuser = "0.11"
