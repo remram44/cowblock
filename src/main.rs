@@ -389,7 +389,7 @@ impl Filesystem for CowBlockFs {
         }
     }
 
-    fn write(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, data: &[u8], write_flags: u32, flags: i32, _lock_owner: Option<u64>, reply: ReplyWrite) {
+    fn write(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, data: &[u8], _write_flags: u32, _flags: i32, _lock_owner: Option<u64>, reply: ReplyWrite) {
         if ino != 2 {
             reply.error(ENOENT);
             return;
