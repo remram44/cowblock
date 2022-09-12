@@ -62,6 +62,18 @@ fn mount(input_path: &Path, mount_path: &Path, diff_path: &Path) -> Result<(), I
     fuser::mount2(filesystem, mount_path, &options)
 }
 
+fn getuid() -> u32 {
+    unsafe {
+        libc::getuid()
+    }
+}
+
+fn getgid() -> u32 {
+    unsafe {
+        libc::getgid()
+    }
+}
+
 struct CowBlockFs {
     input: File,
     diff: File,
@@ -70,25 +82,6 @@ struct CowBlockFs {
     nblocks: u64,
     nbytes: u64,
 }
-
-// Attributes of the root directory
-const ROOT_ATTR: FileAttr = FileAttr {
-    ino: 1,
-    size: 0,
-    blocks: 0,
-    atime: UNIX_EPOCH,
-    mtime: UNIX_EPOCH,
-    ctime: UNIX_EPOCH,
-    crtime: UNIX_EPOCH,
-    kind: FileType::Directory,
-    perm: 0o755,
-    nlink: 2,
-    uid: 1000,
-    gid: 1000,
-    rdev: 0,
-    flags: 0,
-    blksize: 512,
-};
 
 impl CowBlockFs {
     fn new(input_path: &Path, diff_path: &Path) -> Result<CowBlockFs, IoError> {
@@ -138,7 +131,27 @@ impl CowBlockFs {
         })
     }
 
-    fn file_attr(&mut self) -> FileAttr {
+    fn folder_attr(&self) -> FileAttr {
+        FileAttr {
+            ino: 1,
+            size: 0,
+            blocks: 0,
+            atime: UNIX_EPOCH,
+            mtime: UNIX_EPOCH,
+            ctime: UNIX_EPOCH,
+            crtime: UNIX_EPOCH,
+            kind: FileType::Directory,
+            perm: 0o755,
+            nlink: 2,
+            uid: getuid(),
+            gid: getgid(),
+            rdev: 0,
+            flags: 0,
+            blksize: 512,
+        }
+    }
+
+    fn file_attr(&self) -> FileAttr {
         FileAttr {
             ino: 2,
             size: self.file_size,
@@ -150,8 +163,8 @@ impl CowBlockFs {
             kind: FileType::RegularFile,
             perm: 0o755,
             nlink: 2,
-            uid: 1000,
-            gid: 1000,
+            uid: getuid(),
+            gid: getgid(),
             rdev: 0,
             flags: 0,
             blksize: 512,
@@ -317,7 +330,7 @@ impl Filesystem for CowBlockFs {
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match ino {
-            1 => reply.attr(&ZERO, &ROOT_ATTR),
+            1 => reply.attr(&ZERO, &self.folder_attr()),
             2 => reply.attr(&ZERO, &self.file_attr()),
             _ => reply.error(ENOENT),
         }
