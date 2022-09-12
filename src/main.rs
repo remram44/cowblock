@@ -69,18 +69,14 @@ fn main_r() -> Result<(), Box<dyn Error>> {
         None => Cow::Owned(path_with_suffix(mount_path, "-diff")?),
     };
 
-    mount(Path::new(&input_path), Path::new(&mount_path), &diff_path)
-        .map_err(|e| Box::new(e) as Box<dyn Error>)
-}
-
-fn mount(input_path: &Path, mount_path: &Path, diff_path: &Path) -> Result<(), IoError> {
     let options = vec![
         MountOption::RW,
         MountOption::FSName("fuse-cow-block".to_owned()),
         MountOption::DefaultPermissions,
     ];
-    let filesystem = CowBlockFs::new(input_path, diff_path)?;
+    let filesystem = CowBlockFs::new(input_path, &diff_path)?;
     fuser::mount2(filesystem, mount_path, &options)
+        .map_err(|e| Box::new(e) as Box<dyn Error>)
 }
 
 fn getuid() -> u32 {
