@@ -25,7 +25,10 @@ jobs:
       - name: Install fuse
         run: sudo apt-get install libfuse3-dev
       - name: Build
-        run: cargo build --verbose
+        run: |
+          LOCK_SHA256=$(shasum -a 256 Cargo.lock)
+          cargo build --verbose
+          if [ $LOCK_SHA256 != $(shasum -a 256 Cargo.lock)]; then exit 1; fi
       - name: Run unit tests
         run: cargo test --verbose
       - name: Run integration test
