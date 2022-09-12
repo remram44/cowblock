@@ -1,5 +1,5 @@
 [package]
-name = "fuse-cow-block"
+name = "cowblock"
 version = "0.1.0"
 edition = "2018"
 

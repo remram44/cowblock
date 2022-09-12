@@ -1,5 +1,5 @@
-Fuse Copy-on-Write File at the Block Level
-==========================================
+Block-Level Copy-on-Write
+=========================
 
 What is this?
 -------------
@@ -12,7 +12,7 @@ For example, if you have a big database or virtual hard drive and you want to ma
 
 ```
 $ mkdir virtual_copy
-$ fuse-cow-block my_big_file.sqlite3 virtual_copy/ differences.bin &
+$ cowblock my_big_file.sqlite3 virtual_copy/ differences.bin &
 $ sqlite3 virtual_copy/my_big_file.sqlite3
 # Make changes here
 # The changes are visible in virtual_copy/my_big_file.sqlite3,

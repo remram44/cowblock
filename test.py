@@ -21,7 +21,7 @@ except FileNotFoundError:
 try:
     # Mount
     os.makedirs('mount', exist_ok=True)
-    mount_proc = subprocess.Popen(['target/debug/fuse-cow-block', 'input.bin', 'mount', 'diff.bin'])
+    mount_proc = subprocess.Popen(['target/debug/cowblock', 'input.bin', 'mount', 'diff.bin'])
     time.sleep(2)
     assert mount_proc.returncode is None
 
