@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 fuser = "0.11"
+libc = "0.2"
