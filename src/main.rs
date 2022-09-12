@@ -1,13 +1,15 @@
 mod iter_blocks;
 
+use clap::{Arg, Command};
 use fuser::{FileAttr, Filesystem, FileType, MountOption, Request, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyWrite};
 use libc::{EINVAL, EIO, ENOENT};
+use std::borrow::Cow;
 use std::env::args_os;
 use std::error::Error;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Read, Seek, SeekFrom, Write};
 use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use iter_blocks::iter_blocks;
@@ -24,31 +26,50 @@ fn main() {
     }
 }
 
+fn path_with_suffix(path: &Path, suffix: &str) -> Result<PathBuf, IoError> {
+    let path = path.canonicalize()?;
+    let mut filename = path.file_name().unwrap_or(OsStr::new("")).to_owned();
+    filename.push(suffix);
+    Ok(path.with_file_name(filename))
+}
+
 fn main_r() -> Result<(), Box<dyn Error>> {
     // Read command line
-    let mut args = args_os();
-    match args.next() {
-        None => return Err("Not enough arguments".into()),
-        Some(_) => {}
-    }
-    let input_path: OsString = match args.next() {
-        None => return Err("Not enough arguments".into()),
-        Some(f) => f,
+    let mut cli = Command::new("cowblock")
+        .bin_name("cowblock")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .arg(
+            Arg::new("input")
+                .help("Input file name")
+                .required(true)
+                .takes_value(true)
+                .allow_invalid_utf8(true)
+        )
+        .arg(
+            Arg::new("mount")
+                .help("Mount directory")
+                .required(true)
+                .takes_value(true)
+                .allow_invalid_utf8(true)
+        )
+        .arg(
+            Arg::new("diff")
+                .long("diff")
+                .help("Diff file, storing the overwritten blocks")
+                .takes_value(true)
+                .allow_invalid_utf8(true)
+        );
+    let matches = cli.try_get_matches_from_mut(args_os())?;
+    let input_path = Path::new(matches.value_of_os("input").unwrap());
+    let mount_path = Path::new(matches.value_of_os("mount").unwrap());
+    let diff_path = match matches.value_of_os("diff") {
+        Some(name) => Cow::Borrowed(Path::new(name)),
+        None => Cow::Owned(path_with_suffix(mount_path, "-diff")?),
     };
-    let mount_path = match args.next() {
-        None => return Err("Not enough arguments".into()),
-        Some(f) => f,
-    };
-    let diff_path = match args.next() {
-        None => return Err("Not enough arguments".into()),
-        Some(f) => f,
-    };
-    match args.next() {
-        None => {}
-        Some(_) => return Err("Too many arguments".into()),
-    }
 
-    mount(Path::new(&input_path), Path::new(&mount_path), Path::new(&diff_path))
+    mount(Path::new(&input_path), Path::new(&mount_path), &diff_path)
         .map_err(|e| Box::new(e) as Box<dyn Error>)
 }
 

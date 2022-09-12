@@ -13,20 +13,20 @@ with open('input.bin', 'wb') as fp:
 
 # Remove diff file
 try:
-    os.remove('diff.bin')
+    os.remove('cow-diff')
 except FileNotFoundError:
     pass
 
 
 try:
     # Mount
-    os.makedirs('mount', exist_ok=True)
-    mount_proc = subprocess.Popen(['target/debug/cowblock', 'input.bin', 'mount', 'diff.bin'])
+    os.makedirs('cow', exist_ok=True)
+    mount_proc = subprocess.Popen(['target/debug/cowblock', 'input.bin', 'cow'])
     time.sleep(2)
     assert mount_proc.returncode is None
 
     # Do some reads
-    with open('mount/input.bin', 'rb') as fp:
+    with open('cow/input.bin', 'rb') as fp:
         print('> read(4084, 24)', flush=True)
         fp.seek(4096 - 12, 0)
         data = fp.read(24)
@@ -39,7 +39,7 @@ try:
         assert data == bytes(range(251, 256)) + bytes(range(256)) * 16 + bytes(range(0, 5))
 
     # Do some writes
-    with open('mount/input.bin', 'r+b') as fp:
+    with open('cow/input.bin', 'r+b') as fp:
         print('> write(3000, 3)', flush=True)
         fp.seek(3000, 0)
         fp.write(b'aaa')
@@ -51,7 +51,7 @@ try:
         fp.flush()
 
     # Read again
-    with open('mount/input.bin', 'rb') as fp:
+    with open('cow/input.bin', 'rb') as fp:
         print('> read(2999, 5)', flush=True)
         fp.seek(2999, 0)
         data = fp.read(5)
@@ -64,4 +64,4 @@ try:
 finally:
     mount_proc.terminate()
     mount_proc.wait()
-    subprocess.call(['fusermount', '-u', 'mount'])
+    subprocess.call(['fusermount', '-u', 'cow'])

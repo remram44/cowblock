@@ -8,7 +8,7 @@ jobs:
   build:
     strategy:
       matrix:
-        rust-version: [1.55.0, stable, nightly]
+        rust-version: [1.60.0, stable, nightly]
       fail-fast: false
     runs-on: ubuntu-latest
     steps:

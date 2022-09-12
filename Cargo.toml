@@ -2,12 +2,13 @@
 name = "cowblock"
 version = "0.1.0"
 edition = "2018"
-rust-version = "1.55"
+rust-version = "1.60"
 description = "Block-level copy-on-write tool"
 repository = "https://github.com/remram44/cowblock"
 readme = "README.md"
 
 [dependencies]
+clap = "3.1"
 fuser = "0.11"
 libc = "0.2"
 
