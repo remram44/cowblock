@@ -10,6 +10,8 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
+use iter_blocks::iter_blocks;
+
 const BLOCK_SIZE: u64 = 4096;
 
 fn main() {
@@ -150,9 +152,9 @@ impl CowBlockFs {
             let mut data = [0u8; 4];
             self.diff.read_exact(&mut data)?;
             let data = 
-                (data[0] << 24) as u64
-                | (data[1] << 16) as u64
-                | (data[2] << 8) as u64
+                (data[0] as u64) << 24
+                | (data[1] as u64) << 16
+                | (data[2] as u64) << 8
                 | data[3] as u64;
             if data == 0 {
                 Ok(None)
@@ -164,13 +166,13 @@ impl CowBlockFs {
             let mut data = [0u8; 8];
             self.diff.read_exact(&mut data)?;
             let data =
-                (data[0] << 56) as u64
-                | (data[1] << 48) as u64
-                | (data[2] << 40) as u64
-                | (data[3] << 32) as u64
-                | (data[4] << 24) as u64
-                | (data[5] << 16) as u64
-                | (data[6] << 8) as u64
+                (data[0] as u64) << 56
+                | (data[1] as u64) << 48
+                | (data[2] as u64) << 40
+                | (data[3] as u64) << 32
+                | (data[4] as u64) << 24
+                | (data[5] as u64) << 16
+                | (data[6] as u64) << 8
                 | data[7] as u64;
             if data == 0 {
                 Ok(None)
@@ -180,12 +182,105 @@ impl CowBlockFs {
         }
     }
 
+    fn write_index(&mut self, block_num: u64, position: u64) -> Result<(), IoError> {
+        if self.nbytes == 4 {
+            self.diff.seek(SeekFrom::Start(block_num * 4))?;
+            let data = position + 1;
+            let data = [
+                (data >> 24) as u8,
+                (data >> 16) as u8,
+                (data >> 8) as u8,
+                data as u8,
+            ];
+            self.diff.write_all(&data)
+        } else {
+            self.diff.seek(SeekFrom::Start(block_num * 8))?;
+            let data = position + 1;
+            let data = [
+                (data >> 56) as u8,
+                (data >> 48) as u8,
+                (data >> 40) as u8,
+                (data >> 32) as u8,
+                (data >> 24) as u8,
+                (data >> 16) as u8,
+                (data >> 8) as u8,
+                data as u8,
+            ];
+            self.diff.write_all(&data)
+        }
+    }
+
     fn do_read(&mut self, offset: u64, size: u64) -> Result<Vec<u8>, IoError> {
-        todo!()
+        let mut result = vec![0u8; size as usize];
+
+        let mut blocks = iter_blocks(BLOCK_SIZE, offset, size);
+        while let Some(block) = blocks.next() {
+            // Has this block been overwritten?
+            match self.read_index(block.num)? {
+                None => {
+                    // No, read from input file
+                    self.input.seek(SeekFrom::Start(offset + block.start_offset))?;
+                    self.input.read_exact(&mut result[block.start_offset as usize..block.start_offset as usize + block.size as usize])?;
+                }
+                Some(position) => {
+                    // Yes, read from diff file
+                    let position = position * BLOCK_SIZE + self.nbytes * self.nblocks;
+                    self.diff.seek(SeekFrom::Start(position))?;
+                    self.diff.read_exact(&mut result[block.start_offset as usize..block.start_offset as usize + block.size as usize])?;
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     fn do_write(&mut self, offset: u64, data: &[u8]) -> Result<u32, IoError> {
-        todo!()
+        let mut blocks = iter_blocks(BLOCK_SIZE, offset, data.len() as u64);
+        while let Some(block) = blocks.next() {
+            // Has this block been overwritten?
+            match self.read_index(block.num)? {
+                Some(position) => {
+                    // Yes, just write to diff file
+                    let position = position * BLOCK_SIZE + self.nbytes * self.nblocks;
+
+                    self.diff.seek(SeekFrom::Start(position + block.start - block.num * BLOCK_SIZE))?;
+                    self.diff.write_all(&data[block.start_offset as usize..block.start_offset as usize + block.size as usize])?;
+                }
+                None => {
+                    // No
+                    // Allocate a block in diff file
+                    let byte_position = self.diff.seek(SeekFrom::End(0))?;
+                    if byte_position < self.nbytes * self.nblocks
+                        || (byte_position - self.nbytes * self.nblocks) % BLOCK_SIZE != 0
+                    {
+                        return Err(IoError::new(IoErrorKind::InvalidData, "Current diff file size is invalid"));
+                    }
+                    let position = (byte_position - self.nbytes * self.nblocks) / BLOCK_SIZE;
+                    self.write_index(block.num, position)?;
+
+                    // Are we writing a whole block?
+                    if block.size == BLOCK_SIZE {
+                        // Yes, just do it
+                        self.diff.seek(SeekFrom::Start(byte_position))?;
+                        self.diff.write(&data[block.start_offset as usize..block.start_offset as usize + block.size as usize])?;
+                    } else {
+                        // No, read the read of the block from input file
+                        let mut buf = [0u8; BLOCK_SIZE as usize];
+                        self.input.seek(SeekFrom::Start(block.start))?;
+                        self.input.read_exact(&mut buf)?;
+
+                        // Put the new data in it
+                        buf[(block.start as usize % BLOCK_SIZE as usize)..(block.end as usize % BLOCK_SIZE as usize)].clone_from_slice(&data[block.start_offset as usize..block.size as usize]);
+
+                        // Write it to diff file
+                        self.diff.seek(SeekFrom::Start(byte_position))?;
+                        self.diff.write_all(&buf)?;
+                    }
+                }
+            }
+        }
+
+        Ok(data.len() as u32)
     }
 }
 
@@ -248,6 +343,7 @@ impl Filesystem for CowBlockFs {
                 break;
             }
         }
+        reply.ok();
     }
 
     fn read(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, size: u32, _flags: i32, _lock_owner: Option<u64>, reply: ReplyData) {
@@ -290,7 +386,10 @@ impl Filesystem for CowBlockFs {
             return;
         }
         if let Err(e) = self.diff.sync_all() {
-            reply.error(e.raw_os_error().unwrap_or(ENOTSUP));
+            eprintln!("Flush error: {}", e);
+            reply.error(e.raw_os_error().unwrap_or(EIO));
+        } else {
+            reply.ok();
         }
     }
 
@@ -307,7 +406,10 @@ impl Filesystem for CowBlockFs {
             self.diff.sync_all()
         };
         if let Err(e) = res {
+            eprintln!("Fsync error: {}", e);
             reply.error(e.raw_os_error().unwrap_or(EIO));
+        } else {
+            reply.ok();
         }
     }
 }
