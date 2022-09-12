@@ -350,7 +350,7 @@ impl Filesystem for CowBlockFs {
                 return;
             }
         };
-        for (i, entry) in entries.into_iter().enumerate().skip(offset as usize) {
+        for (i, entry) in IntoIterator::into_iter(entries).enumerate().skip(offset as usize) {
             // ino, offset, kind, name
             if reply.add(entry.0, (i + 1) as i64, entry.1, entry.2) {
                 break;
