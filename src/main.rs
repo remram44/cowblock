@@ -1,3 +1,5 @@
+mod iter_blocks;
+
 use fuser::{FileAttr, Filesystem, FileType, MountOption, Request, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyWrite};
 use libc::{EINVAL, EIO, ENOENT, ENOTSUP};
 use std::env::args_os;
