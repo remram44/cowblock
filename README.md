@@ -14,10 +14,10 @@ For example, if you have a big database or virtual hard drive and you want to ma
 $ mkdir virtual_copy
 $ cowblock my_big_file.sqlite3 virtual_copy/ differences.bin &
 $ sqlite3 virtual_copy/my_big_file.sqlite3
-# Make changes here
-# The changes are visible in virtual_copy/my_big_file.sqlite3,
-# but no change is made to my_big_file.sqlite3
-# The changed blocks are stored in differences.bin, which is a much smaller file
+  # Make changes here
+  # The changes are visible in virtual_copy/my_big_file.sqlite3,
+  # but no change is made to my_big_file.sqlite3
+  # The changed blocks are stored in differences.bin, which is a much smaller file
 $ fusermount -u virtual_copy/
 ```
 
