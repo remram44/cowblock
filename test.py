@@ -26,15 +26,16 @@ except FileNotFoundError:
 
 try:
     # Mount
-    os.makedirs('cow', exist_ok=True)
+    with open('cow', 'w'):
+        pass
     mount_proc = subprocess.Popen(['target/debug/cowblock', 'input.bin', 'cow'])
     time.sleep(2)
     assert mount_proc.returncode is None
 
-    assert os.path.getsize('cow/input.bin') == 4096 * 12 + 128, os.path.getsize('cow/input.bin')
+    assert os.path.getsize('cow') == 4096 * 12 + 128, os.path.getsize('cow')
 
     # Do some reads
-    with open('cow/input.bin', 'rb') as fp:
+    with open('cow', 'rb') as fp:
         print('> read(4084, 24)', flush=True)
         fp.seek(4096 - 12, 0)
         data = fp.read(24)
@@ -47,7 +48,7 @@ try:
         assert data == bytes(range(251, 256)) + bytes(range(256)) * 16 + bytes(range(0, 5))
 
     # Do some writes
-    with open('cow/input.bin', 'r+b') as fp:
+    with open('cow', 'r+b') as fp:
         print('> write(3000, 3)', flush=True)
         fp.seek(3000, 0)
         fp.write(b'aaa')
@@ -62,16 +63,16 @@ try:
         fp.seek(4096 * 12 - 2)
         fp.write(b'dddd')
         fp.flush()
-        assert os.path.getsize('cow/input.bin') == 4096 * 12 + 128
+        assert os.path.getsize('cow') == 4096 * 12 + 128
 
         print('> write(49276, 8)', flush=True)
         fp.seek(4096 * 12 + 128 - 4)
         fp.write(b'eeeeeeee')
         fp.flush()
-        assert os.path.getsize('cow/input.bin') == 4096 * 12 + 128 + 4
+        assert os.path.getsize('cow') == 4096 * 12 + 128 + 4
 
     # Read again
-    with open('cow/input.bin', 'rb') as fp:
+    with open('cow', 'rb') as fp:
         print('> read(2999, 5)', flush=True)
         fp.seek(2999, 0)
         data = fp.read(5)

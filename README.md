@@ -11,15 +11,15 @@ It is implemented as a filesystem in userspace that keeps track of changes to th
 For example, if you have a big database or virtual hard drive and you want to make changes but keep the original; you can use this tool to create a copy of the file:
 
 ```
-$ mkdir virtual_copy
-$ cowblock my_big_file.sqlite3 virtual_copy &
-$ sqlite3 virtual_copy/my_big_file.sqlite3
+$ touch virtual_copy.db
+$ cowblock original.db virtual_copy.db &
+$ sqlite3 virtual_copy.db
   # Make changes here
-  # The changes are visible in virtual_copy/my_big_file.sqlite3,
-  # but no change is made to my_big_file.sqlite3
-  # The changed blocks are stored in virtual_copy-diff and virtual_copy-extra,
+  # The changes are visible in virtual_copy.db,
+  # but no change is made to original.db
+  # The changed blocks are stored in virtual_copy.db-diff and virtual_copy.db-extra,
   # which are much smaller files
-$ fusermount -u virtual_copy/
+$ fusermount -u virtual_copy.db
 ```
 
 Why?

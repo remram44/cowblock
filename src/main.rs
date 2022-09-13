@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::env::args_os;
 use std::error::Error;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Read, Seek, SeekFrom, Write};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -47,7 +47,7 @@ fn main_r() -> Result<(), Box<dyn Error>> {
         )
         .arg(
             Arg::new("mount")
-                .help("Mount directory")
+                .help("Mount point (file)")
                 .required(true)
                 .takes_value(true)
                 .allow_invalid_utf8(true)
@@ -117,7 +117,6 @@ struct CowBlockFs {
     input: File,
     diff: File,
     extra: File,
-    filename: OsString,
     file_size: u64,
     nblocks: u64,
     nbytes: u64,
@@ -174,43 +173,20 @@ impl CowBlockFs {
         }
         let file_size = nblocks * block_size + extra_file_size;
 
-        let filename = input_path.file_name().ok_or(IoError::new(IoErrorKind::NotFound, "Invalid input filename"))?.to_owned();
-
         Ok(CowBlockFs {
             block_size,
             input,
             diff,
             extra,
-            filename,
             file_size,
             nblocks,
             nbytes,
         })
     }
 
-    fn folder_attr(&self) -> FileAttr {
-        FileAttr {
-            ino: 1,
-            size: 0,
-            blocks: 0,
-            atime: UNIX_EPOCH,
-            mtime: UNIX_EPOCH,
-            ctime: UNIX_EPOCH,
-            crtime: UNIX_EPOCH,
-            kind: FileType::Directory,
-            perm: 0o755,
-            nlink: 2,
-            uid: getuid(),
-            gid: getgid(),
-            rdev: 0,
-            flags: 0,
-            blksize: 512,
-        }
-    }
-
     fn file_attr(&self) -> FileAttr {
         FileAttr {
-            ino: 2,
+            ino: 1,
             size: self.file_size,
             blocks: (self.file_size - 1) / 512 + 1,
             atime: UNIX_EPOCH,
@@ -400,25 +376,20 @@ impl CowBlockFs {
 const ZERO: std::time::Duration = std::time::Duration::ZERO;
 
 impl Filesystem for CowBlockFs {
-    fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-        if parent == 1 && name == self.filename {
-            reply.entry(&ZERO, &self.file_attr(), 0);
-        } else {
-            reply.error(ENOENT);
-        }
+    fn lookup(&mut self, _req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEntry) {
+        reply.error(ENOENT);
     }
 
     fn readlink(&mut self, _req: &Request, ino: u64, reply: ReplyData) {
         match ino {
-            1|2 => reply.error(EINVAL),
+            1 => reply.error(EINVAL),
             _ => reply.error(ENOENT),
         }
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match ino {
-            1 => reply.attr(&ZERO, &self.folder_attr()),
-            2 => reply.attr(&ZERO, &self.file_attr()),
+            1 => reply.attr(&ZERO, &self.file_attr()),
             _ => reply.error(ENOENT),
         }
     }
@@ -434,33 +405,16 @@ impl Filesystem for CowBlockFs {
     fn readdir(
         &mut self,
         _req: &Request<'_>,
-        ino: u64,
+        _ino: u64,
         _fh: u64,
-        offset: i64,
-        mut reply: ReplyDirectory,
+        _offset: i64,
+        reply: ReplyDirectory,
     ) {
-        let entries = match ino {
-            1 => [
-                (1, FileType::Directory, OsStr::new(".")),
-                (1, FileType::Directory, OsStr::new("..")),
-                (2, FileType::RegularFile, &self.filename),
-            ],
-            _ => {
-                reply.error(ENOENT);
-                return;
-            }
-        };
-        for (i, entry) in IntoIterator::into_iter(entries).enumerate().skip(offset as usize) {
-            // ino, offset, kind, name
-            if reply.add(entry.0, (i + 1) as i64, entry.1, entry.2) {
-                break;
-            }
-        }
-        reply.ok();
+        reply.error(ENOENT);
     }
 
     fn read(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, size: u32, _flags: i32, _lock_owner: Option<u64>, reply: ReplyData) {
-        if ino != 2 {
+        if ino != 1 {
             reply.error(ENOENT);
             return;
         }
@@ -477,7 +431,7 @@ impl Filesystem for CowBlockFs {
     }
 
     fn write(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, data: &[u8], _write_flags: u32, _flags: i32, _lock_owner: Option<u64>, reply: ReplyWrite) {
-        if ino != 2 {
+        if ino != 1 {
             reply.error(ENOENT);
             return;
         }
@@ -492,9 +446,7 @@ impl Filesystem for CowBlockFs {
     }
 
     fn flush(&mut self, _req: &Request, ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
-        if ino == 1 {
-            return;
-        } else if ino != 2 {
+        if ino != 1 {
             reply.error(ENOENT);
             return;
         }
@@ -507,9 +459,7 @@ impl Filesystem for CowBlockFs {
     }
 
     fn fsync(&mut self, _req: &Request, ino: u64, _fh: u64, datasync: bool, reply: ReplyEmpty) {
-        if ino == 1 {
-            return;
-        } else if ino != 2 {
+        if ino != 1 {
             reply.error(ENOENT);
             return;
         }

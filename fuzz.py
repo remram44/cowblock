@@ -51,17 +51,18 @@ def do_test(seed):
 
     try:
         # Mount
-        os.makedirs('cow', exist_ok=True)
+        with open('cow', 'wb'):
+            pass
         mount_proc = subprocess.Popen(['target/debug/cowblock', 'input.bin', 'cow', '--block-size', '64'])
         time.sleep(2)
         assert mount_proc.returncode is None
 
         for _ in range(100):
-            if os.path.getsize('cow/input.bin') != len(data):
-                raise AssertionError("Invalid file size: %d != %d" % (os.path.getsize('cow/input.bin'), len(data)))
+            if os.path.getsize('cow') != len(data):
+                raise AssertionError("Invalid file size: %d != %d" % (os.path.getsize('cow'), len(data)))
 
             # Do random write
-            with open('cow/input.bin', 'r+b') as fp:
+            with open('cow', 'r+b') as fp:
                 # Only 10% chance to write over the end of the file
                 in_bounds = rand.random() > 0.10
                 if in_bounds:
@@ -110,7 +111,7 @@ def do_test(seed):
             del diff
 
             # Do random read
-            with open('cow/input.bin', 'rb') as fp:
+            with open('cow', 'rb') as fp:
                 pos = max(0, pos - rand.randint(0, 300))
                 # Only 10% chance to request more than the total length of the file
                 in_bounds = rand.random() > 0.10
