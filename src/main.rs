@@ -125,7 +125,7 @@ struct CowBlockFs {
 
 impl CowBlockFs {
     fn new(block_size: u64, input_path: &Path, diff_path: &Path, extra_path: &Path) -> Result<CowBlockFs, IoError> {
-        let mut input = OpenOptions::new().read(true).write(true).open(input_path)?;
+        let mut input = OpenOptions::new().read(true).open(input_path)?;
         let input_file_size = input.seek(SeekFrom::End(0))?;
         let mut diff = OpenOptions::new().read(true).write(true).create(true).open(diff_path)?;
         let mut extra = OpenOptions::new().read(true).write(true).create(true).open(extra_path)?;
