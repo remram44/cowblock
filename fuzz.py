@@ -2,6 +2,7 @@
 
 import os
 import random
+import struct
 import subprocess
 import time
 
@@ -25,8 +26,9 @@ def do_test(seed):
 
     # Make data array
     rand = random.Random(seed)
+    init_data_size = rand.randint(30, 600)
     data = make_data(
-        rand.randint(30, 600),
+        init_data_size,
         rand.randint(0, (1 << 32) - 1),
     )
 
@@ -86,6 +88,26 @@ def do_test(seed):
 
                 if res != len(buf):
                     raise AssertionError("Partial write: %d != %d" % (res, len(buf)))
+
+            # Check extra file
+            with open('cow-extra', 'rb') as fp:
+                extra = fp.read()
+            if extra != data[init_data_size - (init_data_size % 64):]:
+                raise AssertionError("Invalid extra file content:\n%s\n    !=\n%s" % (hexstring(extra), hexstring(data[init_data_size - (init_data_size % 100):])))
+            del extra
+
+            # Check diff file
+            with open('cow-diff', 'rb') as fp:
+                diff = fp.read()
+            for block in range(init_data_size // 64):
+                num, = struct.unpack('>L', diff[block * 4:block * 4 + 4])
+                if num != 0:
+                    pos = (num - 1) * 64
+                    pos += (init_data_size // 64) * 4
+                    block_data = diff[pos:pos + 64]
+                    if block_data != data[block * 64:block * 64 + 64]:
+                        raise AssertionError("Invalid diff block %d:\n%s\n    !=\n%s" % (block, hexstring(block_data), hexstring(data[block * 64:block * 64 + 64])))
+            del diff
 
             # Do random read
             with open('cow/input.bin', 'rb') as fp:
