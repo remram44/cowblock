@@ -17,7 +17,7 @@ $ sqlite3 virtual_copy/my_big_file.sqlite3
   # Make changes here
   # The changes are visible in virtual_copy/my_big_file.sqlite3,
   # but no change is made to my_big_file.sqlite3
-  # The changed blocks are stored in virtual_copy-diff and virtual_code-extra,
+  # The changed blocks are stored in virtual_copy-diff and virtual_copy-extra,
   # which are much smaller files
 $ fusermount -u virtual_copy/
 ```
