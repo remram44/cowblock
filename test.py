@@ -9,11 +9,17 @@ import time
 with open('input.bin', 'wb') as fp:
     for i in range(0, 4096 * 12, 256):
         fp.write(bytes(range(256)))
+    fp.write(bytes(range(128)))
+assert os.path.getsize('input.bin') == 4096 * 12 + 128
 
 
-# Remove diff file
+# Remove diff and extra files
 try:
     os.remove('cow-diff')
+except FileNotFoundError:
+    pass
+try:
+    os.remove('cow-extra')
 except FileNotFoundError:
     pass
 
@@ -24,6 +30,8 @@ try:
     mount_proc = subprocess.Popen(['target/debug/cowblock', 'input.bin', 'cow'])
     time.sleep(2)
     assert mount_proc.returncode is None
+
+    assert os.path.getsize('cow/input.bin') == 4096 * 12 + 128, os.path.getsize('cow/input.bin')
 
     # Do some reads
     with open('cow/input.bin', 'rb') as fp:
@@ -50,6 +58,18 @@ try:
         fp.write(b'cccccccc')
         fp.flush()
 
+        print('> write(49150, 4)', flush=True)
+        fp.seek(4096 * 12 - 2)
+        fp.write(b'dddd')
+        fp.flush()
+        assert os.path.getsize('cow/input.bin') == 4096 * 12 + 128
+
+        print('> write(49276, 8)', flush=True)
+        fp.seek(4096 * 12 + 128 - 4)
+        fp.write(b'eeeeeeee')
+        fp.flush()
+        assert os.path.getsize('cow/input.bin') == 4096 * 12 + 128 + 4
+
     # Read again
     with open('cow/input.bin', 'rb') as fp:
         print('> read(2999, 5)', flush=True)
@@ -61,6 +81,16 @@ try:
         fp.seek(4096 - 5, 0)
         data = fp.read(10)
         assert data == b'\xFBcccccccc\x04', data
+
+        print('> read(49149, 6)', flush=True)
+        fp.seek(4096 * 12 - 3)
+        data = fp.read(6)
+        assert data == b'\xFDdddd\x02', data
+
+        print('> read(49274, 10)', flush=True)
+        fp.seek(4096 * 12 + 128 - 6)
+        data = fp.read(12)
+        assert data == b'\x7A\x7Beeeeeeee', data
 finally:
     mount_proc.terminate()
     mount_proc.wait()
