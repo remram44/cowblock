@@ -12,8 +12,16 @@ def make_data(size, seed):
     return bytes(rand.randint(0, 255) for _ in range(size))
 
 
+def hexstring(data):
+    lines = []
+    for i in range(0, len(data), 16):
+        s = data[i:i + 16]
+        lines.append(' '.join('%02X' % b for b in s))
+    return '\n'.join(lines)
+
+
 def do_test(seed):
-    print("do_test(seed=%d)" % seed, flush=True)
+    print("\ndo_test(seed=%d)" % seed, flush=True)
 
     # Make data array
     rand = random.Random(seed)
@@ -21,6 +29,8 @@ def do_test(seed):
         rand.randint(30, 600),
         rand.randint(0, (1 << 32) - 1),
     )
+
+    print('> make_data(%d)' % len(data), flush=True)
 
     # Make test input file
     with open('input.bin', 'wb') as fp:
@@ -63,6 +73,10 @@ def do_test(seed):
                     rand.randint(0, (1 << 32) - 1),
                 )
 
+                print('> write(%d, %d)' % (pos, len(buf)), flush=True)
+                if pos + len(buf) > len(data):
+                    print('(new size %d)' % (pos + len(buf)), flush=True)
+
                 # Do the write
                 if pos > len(data):
                     data = data + bytes([0] * (pos - len(data)))
@@ -83,13 +97,18 @@ def do_test(seed):
                 else:
                     size = rand.randint(pos, len(data) + 200) - pos
 
+                print('> read(%d, %d)' % (pos, size), flush=True)
+
                 # Do the read
                 fp.seek(pos, 0)
                 buf = fp.read(size)
 
+                if len(buf) != size:
+                    print('(read %d)' % len(buf), flush=True)
+
                 # Check it
                 if buf != data[pos:pos + size]:
-                    raise AssertionError("Invalid read:\n%r\n    !=\n%r" % (buf, data[pos:pos + size]))
+                    raise AssertionError("Invalid read:\n%s\n    !=\n%s" % (hexstring(buf), hexstring(data[pos:pos + size])))
     finally:
         mount_proc.terminate()
         mount_proc.wait()
