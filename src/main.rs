@@ -316,7 +316,7 @@ impl CowBlockFs {
             // Is this over the input file's length?
             if block.num() >= self.nblocks {
                 // Read from extra file
-                self.extra.seek(SeekFrom::Start(block.start - block.num() * self.block_size))?;
+                self.extra.seek(SeekFrom::Start(block.start - self.nblocks * self.block_size))?;
                 self.extra.read_exact(result_slice)?;
             } else {
                 // Has this block been overwritten?
@@ -344,7 +344,13 @@ impl CowBlockFs {
             // Is this over the input file's length?
             if block.num() >= self.nblocks {
                 // Write to extra file
-                self.extra.seek(SeekFrom::Start(block.start - block.num() * self.block_size))?;
+                if block.start > self.file_size {
+                    self.extra.seek(SeekFrom::End(0))?;
+                    self.extra.write_all(&vec![0u8; (block.start - self.file_size) as usize])?;
+                    self.file_size = block.start;
+                } else {
+                    self.extra.seek(SeekFrom::Start(block.start - self.nblocks * self.block_size))?;
+                }
                 // As an optimization, write all the remaining blocks and stop,
                 // rather than continuing to write the blocks one-by-one
                 self.extra.write_all(&data[block.offset as usize..])?;
