@@ -33,3 +33,5 @@ jobs:
         run: cargo test --verbose
       - name: Run integration test
         run: python3 test.py
+      - name: Run fuzz test
+        run: python3 fuzz.py
