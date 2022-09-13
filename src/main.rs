@@ -149,7 +149,7 @@ impl CowBlockFs {
             nblocks * nbytes,
         );
 
-        if input_file_size != 0 {
+        if nblocks != 0 {
             let current_diff_len = diff.seek(SeekFrom::End(0))?;
             if current_diff_len == 0 {
                 // Allocate space for the index
