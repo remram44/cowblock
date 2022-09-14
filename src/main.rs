@@ -181,6 +181,12 @@ struct FileResolver;
 impl Resolver for FileResolver {
 }
 
+#[derive(Default)]
+struct DirResolver;
+
+impl Resolver for DirResolver {
+}
+
 struct CowBlockFs<R: Resolver> {
     resolver: R,
     block_size: u64,
@@ -212,6 +218,37 @@ impl CowBlockFs<FileResolver> {
 
         Ok(CowBlockFs {
             resolver: FileResolver,
+            block_size,
+            input,
+            diff,
+            extra,
+            file_size,
+            nblocks,
+            nbytes,
+        })
+    }
+}
+
+impl CowBlockFs<DirResolver> {
+    fn new_dir(block_size: u64, input_path: &Path, diff_path: &Path) -> Result<CowBlockFs<DirResolver>, IoError> {
+        match std::fs::create_dir(diff_path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == IoErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+
+        let mut input = OpenOptions::new().read(true).open(input_path)?;
+        let mut diff = OpenOptions::new().read(true).write(true).create(true).open(diff_path.join("diff"))?;
+        let mut extra = OpenOptions::new().read(true).write(true).create(true).open(diff_path.join("extra"))?;
+
+        let DiffSetup {
+            file_size,
+            nblocks,
+            nbytes,
+        } = setup_diff(block_size, &mut input, &mut diff, &mut extra)?;
+
+        Ok(CowBlockFs {
+            resolver: DirResolver::default(),
             block_size,
             input,
             diff,
