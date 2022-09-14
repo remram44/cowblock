@@ -55,14 +55,7 @@ fn main_r() -> Result<(), Box<dyn Error>> {
         .arg(
             Arg::new("diff")
                 .long("diff")
-                .help("Diff file, storing the overwritten blocks")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-        )
-        .arg(
-            Arg::new("extra")
-                .long("extra")
-                .help("Extra file, storing the appended blocks")
+                .help("Diff directory, storing the overwritten and extra blocks")
                 .takes_value(true)
                 .allow_invalid_utf8(true)
         )
@@ -78,11 +71,7 @@ fn main_r() -> Result<(), Box<dyn Error>> {
     let mount_path = Path::new(matches.value_of_os("mount").unwrap());
     let diff_path = match matches.value_of_os("diff") {
         Some(name) => Cow::Borrowed(Path::new(name)),
-        None => Cow::Owned(path_with_suffix(mount_path, "-diff")?),
-    };
-    let extra_path = match matches.value_of_os("extra") {
-        Some(name) => Cow::Borrowed(Path::new(name)),
-        None => Cow::Owned(path_with_suffix(mount_path, "-extra")?),
+        None => Cow::Owned(path_with_suffix(mount_path, ".diff")?),
     };
     let block_size: u64 = matches.value_of("block-size").unwrap().parse()?;
 
@@ -90,14 +79,26 @@ fn main_r() -> Result<(), Box<dyn Error>> {
         return Err(IoError::new(IoErrorKind::InvalidInput, "Invalid block size").into());
     }
 
-    let options = vec![
-        MountOption::RW,
-        MountOption::FSName("fuse-cow-block".to_owned()),
-        MountOption::DefaultPermissions,
-    ];
-    let filesystem = CowBlockFs::new(block_size, input_path, &diff_path, &extra_path)?;
-    fuser::mount2(filesystem, mount_path, &options)
-        .map_err(|e| Box::new(e) as Box<dyn Error>)
+    if std::fs::metadata(input_path)?.is_dir() {
+        let options = vec![
+            MountOption::RW,
+            MountOption::FSName("cowblock".to_owned()),
+            MountOption::DefaultPermissions,
+        ];
+        todo!()
+        //let filesystem = CowBlockDir::new(block_size, input_path, &diff_path)?;
+        //fuser::mount2(filesystem, mount_path, &options)
+        //    .map_err(|e| Box::new(e) as Box<dyn Error>)
+    } else {
+        let options = vec![
+            MountOption::RW,
+            MountOption::FSName("cowblock".to_owned()),
+            MountOption::DefaultPermissions,
+        ];
+        let filesystem = CowBlockFs::new_file(block_size, input_path, &diff_path)?;
+        fuser::mount2(filesystem, mount_path, &options)
+            .map_err(|e| Box::new(e) as Box<dyn Error>)
+    }
 }
 
 fn getuid() -> u32 {
@@ -112,7 +113,76 @@ fn getgid() -> u32 {
     }
 }
 
-struct CowBlockFs {
+struct DiffSetup {
+    file_size: u64,
+    nblocks: u64,
+    nbytes: u64,
+}
+
+fn setup_diff(block_size: u64, input: &mut File, diff: &mut File, extra: &mut File) -> Result<DiffSetup, IoError> {
+    let input_file_size = input.seek(SeekFrom::End(0))?;
+
+    // Measure the header, which is the index of the blocks
+    let nblocks = input_file_size / block_size;
+    println!(
+        "Input file is {} bytes, that's {} full blocks of {} bytes",
+        input_file_size,
+        nblocks,
+        block_size,
+    );
+    let nbytes = if nblocks < 1 << 32 {
+        4
+    } else {
+        8
+    };
+    println!(
+        "Using {}-byte offsets in header, total header size {} bytes",
+        nbytes,
+        nblocks * nbytes,
+    );
+
+    if nblocks != 0 {
+        let current_diff_len = diff.seek(SeekFrom::End(0))?;
+        if current_diff_len == 0 {
+            // Allocate space for the index
+            diff.seek(SeekFrom::Start(nblocks * nbytes - 1))?;
+            diff.write_all(b"\0")?;
+        } else if current_diff_len < nblocks * nbytes {
+            return Err(IoError::new(IoErrorKind::InvalidData, "Diff file exists but is too small"));
+        }
+    }
+
+    let mut extra_file_size = extra.seek(SeekFrom::End(0))?;
+
+    // If the input file contains a partial last block
+    // (ie the size is not a multiple of the block size)
+    if input_file_size % block_size != 0 && extra_file_size == 0 {
+        // Copy last block to extra file
+        let mut buf = vec![0u8; (input_file_size % block_size) as usize];
+        input.seek(SeekFrom::Start((input_file_size / block_size) * block_size))?;
+        input.read_exact(&mut buf)?;
+        extra.write_all(&buf)?;
+        extra_file_size += buf.len() as u64;
+    }
+    let file_size = nblocks * block_size + extra_file_size;
+
+    Ok(DiffSetup {
+        file_size,
+        nblocks,
+        nbytes,
+    })
+}
+
+trait Resolver {
+}
+
+struct FileResolver;
+
+impl Resolver for FileResolver {
+}
+
+struct CowBlockFs<R: Resolver> {
+    resolver: R,
     block_size: u64,
     input: File,
     diff: File,
@@ -122,58 +192,26 @@ struct CowBlockFs {
     nbytes: u64,
 }
 
-impl CowBlockFs {
-    fn new(block_size: u64, input_path: &Path, diff_path: &Path, extra_path: &Path) -> Result<CowBlockFs, IoError> {
+impl CowBlockFs<FileResolver> {
+    fn new_file(block_size: u64, input_path: &Path, diff_path: &Path) -> Result<CowBlockFs<FileResolver>, IoError> {
+        match std::fs::create_dir(diff_path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == IoErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+
         let mut input = OpenOptions::new().read(true).open(input_path)?;
-        let input_file_size = input.seek(SeekFrom::End(0))?;
-        let mut diff = OpenOptions::new().read(true).write(true).create(true).open(diff_path)?;
-        let mut extra = OpenOptions::new().read(true).write(true).create(true).open(extra_path)?;
+        let mut diff = OpenOptions::new().read(true).write(true).create(true).open(diff_path.join("diff"))?;
+        let mut extra = OpenOptions::new().read(true).write(true).create(true).open(diff_path.join("extra"))?;
 
-        // Measure the header, which is the index of the blocks
-        let nblocks = input_file_size / block_size;
-        println!(
-            "Input file is {} bytes, that's {} full blocks of {} bytes",
-            input_file_size,
+        let DiffSetup {
+            file_size,
             nblocks,
-            block_size,
-        );
-        let nbytes = if nblocks < 1 << 32 {
-            4
-        } else {
-            8
-        };
-        println!(
-            "Using {}-byte offsets in header, total header size {} bytes",
             nbytes,
-            nblocks * nbytes,
-        );
-
-        if nblocks != 0 {
-            let current_diff_len = diff.seek(SeekFrom::End(0))?;
-            if current_diff_len == 0 {
-                // Allocate space for the index
-                diff.seek(SeekFrom::Start(nblocks * nbytes - 1))?;
-                diff.write_all(b"\0")?;
-            } else if current_diff_len < nblocks * nbytes {
-                return Err(IoError::new(IoErrorKind::InvalidData, "Diff file exists but is too small"));
-            }
-        }
-
-        let mut extra_file_size = extra.seek(SeekFrom::End(0))?;
-
-        // If the input file contains a partial last block
-        // (ie the size is not a multiple of the block size)
-        if input_file_size % block_size != 0 && extra_file_size == 0 {
-            // Copy last block to extra file
-            let mut buf = vec![0u8; (input_file_size % block_size) as usize];
-            input.seek(SeekFrom::Start((input_file_size / block_size) * block_size))?;
-            input.read_exact(&mut buf)?;
-            extra.write_all(&buf)?;
-            extra_file_size += buf.len() as u64;
-        }
-        let file_size = nblocks * block_size + extra_file_size;
+        } = setup_diff(block_size, &mut input, &mut diff, &mut extra)?;
 
         Ok(CowBlockFs {
+            resolver: FileResolver,
             block_size,
             input,
             diff,
@@ -183,7 +221,9 @@ impl CowBlockFs {
             nbytes,
         })
     }
+}
 
+impl<R: Resolver> CowBlockFs<R> {
     fn file_attr(&self) -> FileAttr {
         FileAttr {
             ino: 1,
@@ -375,7 +415,7 @@ impl CowBlockFs {
 
 const ZERO: std::time::Duration = std::time::Duration::ZERO;
 
-impl Filesystem for CowBlockFs {
+impl<R: Resolver> Filesystem for CowBlockFs<R> {
     fn lookup(&mut self, _req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEntry) {
         reply.error(ENOENT);
     }
